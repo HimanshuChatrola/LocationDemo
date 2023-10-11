@@ -4,17 +4,19 @@ import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:workmanager/workmanager.dart';
 
-fetchLocations() {
-  print(
-      "${_position!.latitude.toString()}, ${_position!.longitude.toString()}, ${DateTime.now()}");
+Future<Position> fetchLocations() async {
+  print("fun called");
+  return await _getCurrentLocation();
 }
 
 const task = "Background Location Service";
 void callbackDispatcher() {
-  Workmanager().executeTask((taskName, inputData) {
+  Workmanager().executeTask((taskName, inputData) async {
     switch (taskName) {
       case 'Background Location Service':
-        fetchLocations();
+        _position = await fetchLocations();
+        print(
+            "${_position!.latitude.toString()}, ${_position!.longitude.toString()}, ${DateTime.now()}");
         break;
       default:
     }
@@ -32,20 +34,20 @@ Position? _position;
 late bool servicePermission = false;
 late LocationPermission permission;
 
-class MyApp extends StatelessWidget {
-  Future<Position> _getCurrentLocation() async {
-    // Request Permissions
-    servicePermission = await Geolocator.isLocationServiceEnabled();
-    if (!servicePermission) {
-      print("Location Service is disabled.");
-    }
-    permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-    return await Geolocator.getCurrentPosition();
+Future<Position> _getCurrentLocation() async {
+  // Request Permissions
+  servicePermission = await Geolocator.isLocationServiceEnabled();
+  if (!servicePermission) {
+    print("Location Service is disabled.");
   }
+  permission = await Geolocator.checkPermission();
+  if (permission == LocationPermission.denied) {
+    permission = await Geolocator.requestPermission();
+  }
+  return await Geolocator.getCurrentPosition();
+}
 
+class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -60,13 +62,16 @@ class MyApp extends StatelessWidget {
         ),
         body: Center(
           child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               const Text("Location getting"),
               ElevatedButton(
                 child: const Text("Get"),
                 onPressed: () async {
-                  _position = await _getCurrentLocation();
+                  // _position = await _getCurrentLocation();
                   var uniqueId = DateTime.now().second.toString();
+                  print("${DateTime.now()}");
                   await Workmanager().registerPeriodicTask(uniqueId, task,
                       frequency: const Duration(minutes: 15),
                       constraints:
