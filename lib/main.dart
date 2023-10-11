@@ -1,64 +1,80 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
-import 'package:flutter_background_geolocation/flutter_background_geolocation.dart' as bg;
-import 'package:permission_handler/permission_handler.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:workmanager/workmanager.dart';
 
-void main() {
+fetchLocations() {
+  print(
+      "${_position!.latitude.toString()}, ${_position!.longitude.toString()}, ${DateTime.now()}");
+}
+
+const task = "Background Location Service";
+void callbackDispatcher() {
+  Workmanager().executeTask((taskName, inputData) {
+    switch (taskName) {
+      case 'Background Location Service':
+        fetchLocations();
+        break;
+      default:
+    }
+    return Future.value(true);
+  });
+}
+
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  bg.BackgroundGeolocation.start();
+  await Workmanager().initialize(callbackDispatcher, isInDebugMode: true);
   runApp(MyApp());
 }
 
+Position? _position;
+late bool servicePermission = false;
+late LocationPermission permission;
+
 class MyApp extends StatelessWidget {
+  Future<Position> _getCurrentLocation() async {
+    // Request Permissions
+    servicePermission = await Geolocator.isLocationServiceEnabled();
+    if (!servicePermission) {
+      print("Location Service is disabled.");
+    }
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    return await Geolocator.getCurrentPosition();
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: HomeScreen(),
-    );
-  }
-}
-
-void _setupLocationListener() {
-  bg.BackgroundGeolocation.onLocation((bg.Location location) {
-    print(
-        'Latitude: ${location.coords.latitude}, Longitude: ${location.coords.longitude}, ${DateTime.now()}');
-    // Perform actions with location data here
-  });
-}
-//Latitude: 23.0252915, Longitude: 72.4774234, 2023-09-26 16:54:45.
-class HomeScreen extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Location Tracking App'),
+      title: 'Location App',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
-      body: Center(
-        child: ElevatedButton(
-          onPressed: () async {
-            // Request location permissions
-            var status = await Permission.location.request();
-            if (status.isGranted) {
-              // Initialize and configure flutter_background_geolocation
-              await bg.BackgroundGeolocation.ready(bg.Config(
-                locationUpdateInterval: 180000, // 5 minutes in milliseconds
-                desiredAccuracy: bg.Config.DESIRED_ACCURACY_HIGH,
-                // stopTimeout: bg.Config.ACTIVITY_TYPE_AUTOMOTIVE_NAVIGATION,
-                fastestLocationUpdateInterval: 180000,
-                enableHeadless: true,
-                forceReloadOnBoot: true,
-                notification: bg.Notification(
-                  title: "Location",
-                  channelId: "0",
-                  channelName: "Location updates",
-                  sticky: true,
-                  text: "See location updates in logcat..",
-                ),
-              ));
-            }
-            _setupLocationListener();
-          },
-          child: Text('Start Tracking'),
+      home: Scaffold(
+        appBar: AppBar(
+          title: const Text('Location App'),
+        ),
+        body: Center(
+          child: Column(
+            children: [
+              const Text("Location getting"),
+              ElevatedButton(
+                child: const Text("Get"),
+                onPressed: () async {
+                  _position = await _getCurrentLocation();
+                  var uniqueId = DateTime.now().second.toString();
+                  await Workmanager().registerPeriodicTask(uniqueId, task,
+                      frequency: const Duration(minutes: 15),
+                      constraints:
+                          Constraints(networkType: NetworkType.connected));
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
