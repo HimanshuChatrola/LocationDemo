@@ -1,87 +1,61 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:geocoding/geocoding.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:workmanager/workmanager.dart';
-
-Future<Position> fetchLocations() async {
-  print("fun called");
-  return await _getCurrentLocation();
-}
-
-const task = "Background Location Service";
-void callbackDispatcher() {
-  Workmanager().executeTask((taskName, inputData) async {
-    switch (taskName) {
-      case 'Background Location Service':
-        _position = await fetchLocations();
-        print(
-            "${_position!.latitude.toString()}, ${_position!.longitude.toString()}, ${DateTime.now()}");
-        break;
-      default:
-    }
-    return Future.value(true);
-  });
-}
+import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_background_geolocation/flutter_background_geolocation.dart'
+    as bg;
+import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
+import 'package:flutter_background/flutter_background.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Workmanager().initialize(callbackDispatcher, isInDebugMode: true);
+  FlutterBackground.initialize();
+  AndroidAlarmManager.initialize();
+  requestPermissions();
   runApp(MyApp());
+
+  AndroidAlarmManager.periodic(const Duration(minutes: 5), 0, alarmCallback);
 }
 
-Position? _position;
-late bool servicePermission = false;
-late LocationPermission permission;
+String? lat, long;
 
-Future<Position> _getCurrentLocation() async {
-  // Request Permissions
-  servicePermission = await Geolocator.isLocationServiceEnabled();
-  if (!servicePermission) {
-    print("Location Service is disabled.");
-  }
-  permission = await Geolocator.checkPermission();
-  if (permission == LocationPermission.denied) {
-    permission = await Geolocator.requestPermission();
-  }
-  return await Geolocator.getCurrentPosition();
+void timerCallback() async {
+  print('Timer executed at: ${DateTime.now()}');
+
+  bg.BackgroundGeolocation.onLocation((bg.Location location) {
+    lat = location.coords.latitude.toString();
+    long = location.coords.longitude.toString();
+  });
+  print("location $lat, $long, ${DateTime.now()}");
+}
+
+void alarmCallback() async {
+  await AndroidAlarmManager.oneShot(
+      const Duration(minutes: 5), 0, timerCallback);
 }
 
 class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Location App',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        visualDensity: VisualDensity.adaptivePlatformDensity,
-      ),
       home: Scaffold(
         appBar: AppBar(
-          title: const Text('Location App'),
+          title: const Text('Background Timer Example'),
         ),
         body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const Text("Location getting"),
-              ElevatedButton(
-                child: const Text("Get"),
-                onPressed: () async {
-                  // _position = await _getCurrentLocation();
-                  var uniqueId = DateTime.now().second.toString();
-                  print("${DateTime.now()}");
-                  await Workmanager().registerPeriodicTask(uniqueId, task,
-                      frequency: const Duration(minutes: 15),
-                      constraints:
-                          Constraints(networkType: NetworkType.connected));
-                },
-              ),
-            ],
-          ),
+          child: Text('In background location $lat, $long, ${DateTime.now()}'),
         ),
       ),
     );
   }
+}
+
+void requestPermissions() async {
+  Map<Permission, PermissionStatus> statuses = await [
+    Permission.scheduleExactAlarm,
+    Permission.location,
+    // Permission.locationWhenInUse, // For iOS
+    // Permission.locationAlways, // For iOS
+    Permission.ignoreBatteryOptimizations,
+  ].request();
+
+  print(statuses);
 }
