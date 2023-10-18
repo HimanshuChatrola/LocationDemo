@@ -12,7 +12,7 @@ void main() async {
   requestPermissions();
   runApp(MyApp());
 
-  AndroidAlarmManager.periodic(const Duration(minutes: 5), 0, alarmCallback);
+  AndroidAlarmManager.periodic(const Duration(minutes: 1), 0, alarmCallback);
 }
 
 String? lat, long;
@@ -20,16 +20,40 @@ String? lat, long;
 void timerCallback() async {
   print('Timer executed at: ${DateTime.now()}');
 
-  bg.BackgroundGeolocation.onLocation((bg.Location location) {
-    lat = location.coords.latitude.toString();
-    long = location.coords.longitude.toString();
+  bg.BackgroundGeolocation.start();
+
+  // bg.BackgroundGeolocation.ready(bg.Config(
+  //   desiredAccuracy: bg.Config.DESIRED_ACCURACY_HIGH,
+  //   stopOnTerminate: false,
+  //   startOnBoot: true,
+  //   enableHeadless: true,
+  //   debug: true,
+  // ));
+
+  // bg.BackgroundGeolocation.onLocation((bg.Location location) {
+  //   lat = location.coords.latitude.toString();
+  //   long = location.coords.longitude.toString();
+  // });
+
+  bg.BackgroundGeolocation.getCurrentPosition(
+    desiredAccuracy: 0,
+  ).then((bg.Location location) {
+    if (location != null) {
+      double latitude = location.coords.latitude;
+      double longitude = location.coords.longitude;
+      print(
+        "Current Location: $latitude, $longitude ,${DateTime.now()}",
+      );
+    } else {
+      print("Unable to get current location.");
+    }
+  }).catchError((error) {
+    print("Error getting current location: $error");
   });
-  print("location $lat, $long, ${DateTime.now()}");
 }
 
 void alarmCallback() async {
-  await AndroidAlarmManager.oneShot(
-      const Duration(minutes: 5), 0, timerCallback);
+  timerCallback();
 }
 
 class MyApp extends StatelessWidget {
