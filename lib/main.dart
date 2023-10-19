@@ -11,12 +11,13 @@ void main() async {
   FlutterBackground.initialize();
   AndroidAlarmManager.initialize();
   requestPermissions();
-  runApp(MyApp());
+  runApp(const MyApp());
 
   AndroidAlarmManager.periodic(const Duration(minutes: 1), 0, alarmCallback);
 }
 
 String? lat, long, _datetime;
+List<String> locations = [];
 void timerCallback() async {
   _datetime = DateTime.now().toString();
   print('Timer executed at: ${_datetime}');
@@ -38,14 +39,18 @@ void timerCallback() async {
 
   bg.BackgroundGeolocation.getCurrentPosition(
     desiredAccuracy: 0,
-  ).then((bg.Location location) {
+  ).then((bg.Location location) async {
     if (location != null) {
       // double latitude = location.coords.latitude;
       // double longitude = location.coords.longitude;
-      // print(
-      //   "Current Location: $latitude, $longitude ,${DateTime.now()}",
-      // );
-      saveLocationToSharedPrefs(location);
+
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      locations.add(
+          '${location.coords.latitude}, ${location.coords.longitude}, ${_datetime}');
+      prefs.setStringList('locations', locations);
+      print(
+        "Current Location: ${location.coords.latitude}, ${location.coords.longitude} ,${DateTime.now()}",
+      );
     } else {
       print("Unable to get current location.");
     }
@@ -54,26 +59,25 @@ void timerCallback() async {
   });
 }
 
-List<String> locations = [];
-void saveLocationToSharedPrefs(bg.Location location) async {
-  SharedPreferences prefs = await SharedPreferences.getInstance();
-  locations = prefs.getStringList('locations') ?? [];
-  locations.add(
-      '${location.coords.latitude}, ${location.coords.longitude}, ${_datetime}');
-  prefs.setStringList('locations', locations);
-}
-
-Future<void> displayStoredLocations() async {
-  SharedPreferences prefs = await SharedPreferences.getInstance();
-  locations = prefs.getStringList('locations') ?? [];
-
-  for (String locationString in locations) {
-    List<String> parts = locationString.split(',');
-    String latitude = parts[0];
-    String longitude = parts[1];
-    String time = parts[2];
-    print("Stored Location: $locations");
-  }
+Widget setupAlertDialoadContainer(
+    List<String> locations, BuildContext context) {
+  return Container(
+    height: MediaQuery.of(context).size.height,
+    // Change as per your requirement
+    width: MediaQuery.of(context).size.width,
+    child: ListView.builder(
+      shrinkWrap: true,
+      itemCount: locations.length,
+      itemBuilder: (BuildContext context, int index) {
+        return ListTile(
+          title: Text(
+            '${locations[index]}',
+            style: const TextStyle(fontSize: 10),
+          ),
+        );
+      },
+    ),
+  );
 }
 
 void alarmCallback() async {
@@ -81,6 +85,8 @@ void alarmCallback() async {
 }
 
 class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -88,19 +94,7 @@ class MyApp extends StatelessWidget {
         appBar: AppBar(
           title: const Text('Background Timer Example'),
         ),
-        body: Center(
-          child: Column(
-            children: [
-              Text('In background location $lat, $long, ${DateTime.now()}'),
-              ElevatedButton(
-                child: Text("Print"),
-                onPressed: () {
-                  displayStoredLocations();
-                },
-              )
-            ],
-          ),
-        ),
+        body: TestPage(),
       ),
     );
   }
@@ -116,4 +110,40 @@ void requestPermissions() async {
   ].request();
 
   print(statuses);
+}
+
+class TestPage extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Column(
+          children: [
+            Text('In background location $lat, $long, ${DateTime.now()}'),
+            ElevatedButton(
+              child: Text("Print"),
+              onPressed: () async {
+                SharedPreferences prefs = await SharedPreferences.getInstance();
+                locations = prefs.getStringList('locations')!;
+                print("${locations.length}");
+
+                for (var data in locations) {
+                  print(data);
+                }
+
+                showDialog(
+                    context: context,
+                    builder: (BuildContext context) {
+                      return AlertDialog(
+                        title: Text('All Saved locations!'),
+                        content: setupAlertDialoadContainer(locations, context),
+                      );
+                    });
+              },
+            )
+          ],
+        ),
+      ),
+    );
+  }
 }
