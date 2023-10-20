@@ -1,56 +1,60 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_background_geolocation/flutter_background_geolocation.dart'
     as bg;
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:flutter_background/flutter_background.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:untitled1/db_helper.dart';
+import 'package:untitled1/user_location.dart';
+// import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  FlutterBackground.initialize();
-  AndroidAlarmManager.initialize();
-  requestPermissions();
+  await requestPermissions();
+  await AndroidAlarmManager.initialize();
+  await FlutterBackground.initialize();
+
   runApp(const MyApp());
 
-  AndroidAlarmManager.periodic(const Duration(minutes: 1), 0, alarmCallback);
+  final alarmTime = DateTime.now().add(const Duration(minutes: 5));
+
+  await AndroidAlarmManager.periodic(
+      const Duration(minutes: 5),
+      exact: true,
+      rescheduleOnReboot: true,
+      startAt: alarmTime,
+      wakeup: true,
+      0,
+      alarmCallback);
 }
 
 String? lat, long, _datetime;
 List<String> locations = [];
-void timerCallback() async {
+void timerCallback() {
   _datetime = DateTime.now().toString();
   print('Timer executed at: ${_datetime}');
 
   bg.BackgroundGeolocation.start();
 
-  // bg.BackgroundGeolocation.ready(bg.Config(
-  //   desiredAccuracy: bg.Config.DESIRED_ACCURACY_HIGH,
-  //   stopOnTerminate: false,
-  //   startOnBoot: true,
-  //   enableHeadless: true,
-  //   debug: true,
-  // ));
-
-  // bg.BackgroundGeolocation.onLocation((bg.Location location) {
-  //   lat = location.coords.latitude.toString();
-  //   long = location.coords.longitude.toString();
-  // });
-
   bg.BackgroundGeolocation.getCurrentPosition(
     desiredAccuracy: 0,
   ).then((bg.Location location) async {
+    // ignore: unnecessary_null_comparison
     if (location != null) {
-      // double latitude = location.coords.latitude;
-      // double longitude = location.coords.longitude;
-
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      locations.add(
-          '${location.coords.latitude}, ${location.coords.longitude}, ${_datetime}');
-      prefs.setStringList('locations', locations);
+      // SharedPreferences prefs = await SharedPreferences.getInstance();
+      // locations.add(
+      //     '${location.coords.latitude}, ${location.coords.longitude}, ${_datetime}');
+      // prefs.setStringList('locations', locations);
       print(
-        "Current Location: ${location.coords.latitude}, ${location.coords.longitude} ,${DateTime.now()}",
+        "Current Location: ${location.coords.latitude}, ${location.coords.longitude} ,${_datetime}",
       );
+      await DBHelper.insert('userlocations', {
+        'lat': location.coords.latitude.toString(),
+        'lng': location.coords.longitude.toString(),
+        'time': _datetime.toString()
+      });
     } else {
       print("Unable to get current location.");
     }
@@ -60,23 +64,20 @@ void timerCallback() async {
 }
 
 Widget setupAlertDialoadContainer(
-    List<String> locations, BuildContext context) {
-  return Container(
+    List<UserLocation> getdataList, BuildContext context) {
+  return SizedBox(
     height: MediaQuery.of(context).size.height,
     // Change as per your requirement
     width: MediaQuery.of(context).size.width,
     child: ListView.builder(
-      shrinkWrap: true,
-      itemCount: locations.length,
-      itemBuilder: (BuildContext context, int index) {
-        return ListTile(
-          title: Text(
-            '${locations[index]}',
-            style: const TextStyle(fontSize: 10),
-          ),
-        );
-      },
-    ),
+        shrinkWrap: true,
+        itemCount: getdataList.length,
+        itemBuilder: (BuildContext context, int index) {
+          return ListTile(
+            title: Text(
+                '${getdataList[index].lat}, ${getdataList[index].lng}, ${getdataList[index].time}'),
+          );
+        }),
   );
 }
 
@@ -100,19 +101,22 @@ class MyApp extends StatelessWidget {
   }
 }
 
-void requestPermissions() async {
+Future<void> requestPermissions() async {
   Map<Permission, PermissionStatus> statuses = await [
     Permission.scheduleExactAlarm,
-    Permission.location,
+    Permission.locationAlways,
     // Permission.locationWhenInUse, // For iOS
     // Permission.locationAlways, // For iOS
     Permission.ignoreBatteryOptimizations,
+    Permission.appTrackingTransparency,
   ].request();
 
   print(statuses);
 }
 
 class TestPage extends StatelessWidget {
+  const TestPage({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -121,13 +125,26 @@ class TestPage extends StatelessWidget {
           children: [
             Text('In background location $lat, $long, ${DateTime.now()}'),
             ElevatedButton(
-              child: Text("Print"),
+              child: const Text("Print"),
               onPressed: () async {
-                SharedPreferences prefs = await SharedPreferences.getInstance();
-                locations = prefs.getStringList('locations')!;
-                print("${locations.length}");
+                //GET LAT LNG LIST FROM SAVED DATABASE
+                List<Map<String, dynamic>> dataList =
+                    await DBHelper.getData('userlocations');
+                List<UserLocation> _getdataList = dataList
+                    .map(
+                      (item) => UserLocation(
+                        lat: item['lat'],
+                        lng: item['lng'],
+                        time: item['time'],
+                      ),
+                    )
+                    .toList();
 
-                for (var data in locations) {
+                // SharedPreferences prefs = await SharedPreferences.getInstance();
+                // locations = prefs.getStringList('locations')!;
+                // print("${locations.length}");
+
+                for (var data in _getdataList) {
                   print(data);
                 }
 
@@ -135,12 +152,13 @@ class TestPage extends StatelessWidget {
                     context: context,
                     builder: (BuildContext context) {
                       return AlertDialog(
-                        title: Text('All Saved locations!'),
-                        content: setupAlertDialoadContainer(locations, context),
+                        title: const Text('All Saved locations!'),
+                        content:
+                            setupAlertDialoadContainer(_getdataList, context),
                       );
                     });
               },
-            )
+            ),
           ],
         ),
       ),
